@@ -42,8 +42,7 @@ class Slot(Thread):
         self.status = "KILL"
         
         # get process group ID from process PID
-        pgid = os.getpgid(self.process.pid)
-        os.killpg(pgid, signal.SIGKILL)
+        os.killpg(self.process.pid, signal.SIGKILL)
 
     def join(self):
         self.process.wait()
@@ -86,6 +85,8 @@ class Slot(Thread):
 
         # fork subprocess
         self.process = subprocess.Popen(args,
+                            close_fds=True,
+                            preexec_fn=os.setsid,
                             stdin = subprocess.PIPE,
                             stdout = subprocess.PIPE,
                             stderr = subprocess.STDOUT,
