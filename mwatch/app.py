@@ -72,6 +72,8 @@ class App:
             "",
             " r   : restart selected slot",
             " R   : restart all slots",
+            " s   : stop select slot",
+            " S   : stop all slots",
         ]
 
         sy, sx = self.s.getmaxyx()
@@ -98,6 +100,14 @@ class App:
             # restart all slots
             for slot in self.slots:
                 slot.restart()
+
+        elif key == ord('s'):
+            slot = self.slots[self.selected_slot]
+            slot.terminate()
+        
+        elif key == ord('S'):
+            for slot in self.slots:
+                slot.terminate()
 
         elif key in [ord('q'), ord('Q')]:
             self.running = False

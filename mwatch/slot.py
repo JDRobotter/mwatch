@@ -15,6 +15,7 @@ class Slot(Thread):
         self.logqueue = Queue()
 
         self.restart_on_exit = True
+        self.asked_to_quit = False
 
         self.loglines = []
 
@@ -38,16 +39,30 @@ class Slot(Thread):
         return None
 
     def kill(self):
+        self.asked_to_quit = True
         self.restart_on_exit = False
         self.status = "KILL"
         
-        # get process group ID from process PID
-        os.killpg(self.process.pid, signal.SIGKILL)
+        # check if process as exited
+        code = self.process.poll()
+        if code is None:
+            # get process group ID from process PID
+            os.killpg(self.process.pid, signal.SIGKILL)
 
     def join(self):
         self.process.wait()
 
     def restart(self):
+        self.asked_to_quit = False
+        self.restart_on_exit = True
+        self.gracefull_terminate()
+
+    def terminate(self):
+        self.asked_to_quit = False
+        self.restart_on_exit = False
+        self.gracefull_terminate()
+
+    def gracefull_terminate(self):
         self.status = "TERM"
         self.process.terminate()
 
@@ -65,11 +80,20 @@ class Slot(Thread):
             except Exception as e:
                 print(e)
 
+            self.loglines = []
+            self.status = "STOP"
+
         Thread(target=_check_restart_wrapper).start()
 
     def run(self):
 
-        while self.restart_on_exit:
+        while True:
+
+            if self.asked_to_quit:
+                break
+
+            while not self.restart_on_exit:
+                time.sleep(0.3)
 
             # clear logs
             self.loglines = []
