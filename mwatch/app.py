@@ -10,10 +10,11 @@ class App:
         self.s = stdscr
 
         # initialize curses colors
-        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_GREEN, -1)
         curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_RED)
         curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_BLUE)
-        curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(4, curses.COLOR_YELLOW, -1)
 
         self.selected_slot = 0
 
@@ -21,12 +22,15 @@ class App:
         
         self.running = True
         self.show_help = False
+        self.zoomed = None
 
     def load_configuration(self, conf):
         self.slots = [
             Slot(
                 main_command = cfslot.get('run', None),
                 working_directory = cfslot.get('workdir', None),
+                restart_wait = cfslot.get('wait', None),
+                watch = cfslot.get('watcher', None),
             ) 
             for cfslot in conf.get('slot', [])
         ]
@@ -72,6 +76,7 @@ class App:
             "",
             " r   : restart selected slot",
             " R   : restart all slots",
+            " z   : zoom",
             " s   : stop select slot",
             " S   : stop all slots",
         ]
@@ -109,6 +114,12 @@ class App:
             for slot in self.slots:
                 slot.terminate()
 
+        elif key == ord('z'):
+            if self.selected_slot == self.zoomed:
+                self.zoomed = None
+            else:
+                self.zoomed = self.selected_slot
+
         elif key in [ord('q'), ord('Q')]:
             self.running = False
         
@@ -138,7 +149,14 @@ class App:
                 ny = 0
                 for idx,slot in enumerate(self.slots):
                     # compute slot height
-                    h = math.floor(sy / ns) - 1
+                    if self.zoomed is None:
+                        h = math.floor(sy / ns) - 1
+                    else:
+                        if self.zoomed == idx:
+                            h = sy - ns*4
+                        else:
+                            h = 4
+
                     ny = self.draw_slot(ny, h, slot, idx == self.selected_slot)
 
                 self.s.addstr(sy-1, sx-10, "[h]elp", curses.color_pair(3))
@@ -159,7 +177,7 @@ class App:
             pass
 
         for s in self.slots:
-            s.kill()
+            s.terminate()
         for s in self.slots:
             s.join()
 

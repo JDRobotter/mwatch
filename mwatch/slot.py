@@ -3,11 +3,23 @@ from threading import Thread, Lock
 from queue import Queue, Empty
 import shlex, subprocess, select, signal
 
+from .watcher import FileWatcher
+
 class Slot(Thread):
-    def __init__(self, main_command=None, working_directory=None):
+    def __init__(self,
+            main_command=None,
+            working_directory=None,
+            restart_wait=0,
+            watch=None):
         Thread.__init__(self, daemon=True)
         self.main_command = main_command
         self.working_directory = working_directory
+        self.restart_wait = restart_wait
+
+        if watch is not None:
+            self.watcher = FileWatcher(watch)
+        else:
+            self.watcher = None
 
         self.process = None
 
@@ -87,10 +99,15 @@ class Slot(Thread):
 
     def run(self):
 
+        first_time = True
+
         while True:
 
             if self.asked_to_quit:
                 break
+
+            if not first_time:
+                time.sleep(self.restart_wait)
 
             while not self.restart_on_exit:
                 time.sleep(0.3)
@@ -125,8 +142,12 @@ class Slot(Thread):
         fcntl.fcntl(fd, fcntl.F_SETFL, fl|os.O_NONBLOCK)
 
         while True:
+
+            # check if watcher as detected changes
+            if self.watcher and self.watcher.check():
+                self.restart()
+
             # append new line to queue
-            #line = self.process.stdout.readline()
             lines = self.no_blocking_readlines()
             if lines is not None:
                 for line in lines:

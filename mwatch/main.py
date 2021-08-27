@@ -5,6 +5,7 @@ import curses
 import toml
 
 from .app import App
+from .watcher import FileWatcher
 
 def main():
  
@@ -17,6 +18,7 @@ Here is an example configuration:
     [[slot]]
         run = "nc -vlp 3920"
         workdir = "/tmp/"
+        watch = "/tmp/source/"
 
     [[slot]]
         run = "sleep 3600"
@@ -34,7 +36,10 @@ Here is an example configuration:
         app = App(stdscr)
         app.load_configuration(conf)
         app.main()
-    curses.wrapper(_wrapper)
+    try:
+        curses.wrapper(_wrapper)
+    except Exception as e:
+        pass
 
 if __name__ == '__main__':
     main()
