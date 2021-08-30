@@ -23,7 +23,8 @@ class Slot(Thread):
 
         self.process = None
 
-        self.readline_buffer = b""
+        self.stdout_readline_buffer = b""
+        self.stderr_readline_buffer = b""
         self.logqueue = Queue()
 
         self.restart_on_exit = True
@@ -35,20 +36,35 @@ class Slot(Thread):
 
     def no_blocking_readlines(self):
         # wait for data on process stdout
-        fno = self.process.stdout.fileno()
-        rs,_,_ = select.select([fno,],[],[],0.1)
+        ofno = self.process.stdout.fileno()
+        efno = self.process.stderr.fileno()
+        rs,_,_ = select.select([ofno,efno],[],[],0.1)
 
-        if fno in rs:
+        merged_lines = []
+        if efno in rs:
+            # read block, append to buffer and cut it into lines
+            buf = self.process.stderr.read(1024)
+            self.stderr_readline_buffer += buf
+
+            lines = self.stderr_readline_buffer.split(b'\n')
+
+            self.stderr_readline_buffer = lines[-1]
+
+            merged_lines.extend(lines[:-1])
+
+        if ofno in rs:
             # read block, append to buffer and cut it into lines
             buf = self.process.stdout.read(1024)
-            self.readline_buffer += buf
+            self.stdout_readline_buffer += buf
             
-            lines = self.readline_buffer.split(b'\n')
+            lines = self.stdout_readline_buffer.split(b'\n')
 
-            self.readline_buffer = lines[-1]
-            return lines[:-1]
+            self.stdout_readline_buffer = lines[-1]
 
-        return None
+            merged_lines.extend(lines[:-1])
+
+
+        return merged_lines
 
     def kill(self):
         self.asked_to_quit = True
@@ -76,7 +92,7 @@ class Slot(Thread):
 
     def gracefull_terminate(self):
         self.status = "TERM"
-        self.process.terminate()
+        os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
 
         def _check_restart_wrapper():
             try:
@@ -87,7 +103,7 @@ class Slot(Thread):
             except subprocess.TimeoutExpired:
                 # kill process
                 self.status = "KILL"
-                self.process.kill()
+                os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
 
             except Exception as e:
                 print(e)
@@ -135,22 +151,30 @@ class Slot(Thread):
             self.run_main_command()
 
     def run_main_command(self):
-        # split command to args
+        # split args
         args = shlex.split(self.main_command)
 
         # fork subprocess
+
         self.process = subprocess.Popen(args,
-                            close_fds=True,
-                            preexec_fn=os.setsid,
-                            stdin = subprocess.PIPE,
+                            preexec_fn = os.setsid,
+                            stdin = None,
                             stdout = subprocess.PIPE,
-                            stderr = subprocess.STDOUT,
+                            stderr = subprocess.PIPE,
                             cwd = self.working_directory,
-                            env = os.environ,
+                            env = {
+                                **os.environ,
+                                'PYTHONUNBUFFERED': '1',
+                            },
                         )
 
         # make stdout non-blocking
         fd = self.process.stdout.fileno()
+        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl|os.O_NONBLOCK)
+
+        # make stderr non-blocking
+        fd = self.process.stderr.fileno()
         fl = fcntl.fcntl(fd, fcntl.F_GETFL)
         fcntl.fcntl(fd, fcntl.F_SETFL, fl|os.O_NONBLOCK)
 
@@ -162,10 +186,9 @@ class Slot(Thread):
 
             # append new line to queue
             lines = self.no_blocking_readlines()
-            if lines is not None:
-                for line in lines:
-                    line = line.decode()
-                    self.logqueue.put(line.strip())
+            for line in lines:
+                line = line.decode()
+                self.logqueue.put(line.strip())
             
             # check if process as exited
             code = self.process.poll()

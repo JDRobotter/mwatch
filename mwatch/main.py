@@ -5,6 +5,7 @@ import curses
 import toml
 
 from .app import App
+from .slot import Slot
 from .watcher import FileWatcher
 
 def main():
