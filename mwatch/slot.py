@@ -30,8 +30,8 @@ class Slot(Thread):
         self.asked_to_quit = False
 
         self.loglines = []
-
         self.status = ""
+        self.exception = None
 
     def no_blocking_readlines(self):
         # wait for data on process stdout
@@ -98,6 +98,20 @@ class Slot(Thread):
         Thread(target=_check_restart_wrapper).start()
 
     def run(self):
+        try:
+            self.safe_run()
+        except Exception as e:
+            etype, evalue, etb = sys.exc_info()
+            import traceback
+            tb_text = [str(e)]
+            for filename,line,function,text in traceback.extract_tb(etb):
+                tb_text.append(" - in file {}:{}, in {} : {}".format(
+                    filename, line, function, text
+                ))
+
+            self.exception = tb_text
+
+    def safe_run(self):
 
         first_time = True
 
@@ -134,7 +148,6 @@ class Slot(Thread):
                             cwd = self.working_directory,
                             env = os.environ,
                         )
-    
 
         # make stdout non-blocking
         fd = self.process.stdout.fileno()

@@ -15,6 +15,7 @@ class App:
         curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_RED)
         curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_BLUE)
         curses.init_pair(4, curses.COLOR_YELLOW, -1)
+        curses.init_pair(5, curses.COLOR_RED, -1)
 
         self.selected_slot = 0
 
@@ -60,9 +61,15 @@ class App:
         else:
             self.s.addstr(y, 1, "{}".format(slot.status), curses.color_pair(2))
 
-        # draw logs
-        for i,line in enumerate(lines):
-            self.draw_text(y+i+1, 1, line, sx-3)
+        # if slot terminated with an exception show it
+        if slot.exception is None:
+            # draw logs
+            for i,line in enumerate(lines):
+                self.draw_text(y+i+1, 1, line, sx-3)
+        else:
+            # draw exception
+            for i,line in enumerate(slot.exception):
+                self.draw_text(y+i+1, 1, line, sx-3, attr=curses.color_pair(5))
         
         return y+h+1
 
