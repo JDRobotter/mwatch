@@ -2,6 +2,7 @@ import os,sys,time,fcntl
 from threading import Thread, Lock
 from queue import Queue, Empty
 import shlex, subprocess, select, signal
+import tempfile, stat
 
 from .watcher import FileWatcher
 
@@ -9,7 +10,7 @@ class Slot(Thread):
     def __init__(self,
             main_command=None,
             working_directory=None,
-            restart_wait=0,
+            restart_wait=None,
             watch=None):
         Thread.__init__(self, daemon=True)
         self.main_command = main_command
@@ -66,6 +67,13 @@ class Slot(Thread):
 
         return merged_lines
 
+    def send_signal(self, s):
+        if self.process.poll() is not None:
+            return
+        pgid = os.getpgid(self.process.pid)
+        if pgid > 0:
+            os.killpg(pgid, s)
+
     def kill(self):
         self.asked_to_quit = True
         self.restart_on_exit = False
@@ -74,8 +82,7 @@ class Slot(Thread):
         # check if process as exited
         code = self.process.poll()
         if code is None:
-            # get process group ID from process PID
-            os.killpg(self.process.pid, signal.SIGKILL)
+            self.send_signal(signal.SIGKILL)
 
     def join(self):
         self.process.wait()
@@ -90,9 +97,32 @@ class Slot(Thread):
         self.restart_on_exit = False
         self.gracefull_terminate()
 
-    def gracefull_terminate(self):
+    def extract(self):
+        self.asked_to_quit = False
+        self.restart_on_exit = False
+
+        def _on_exit():
+
+            ft = tempfile.NamedTemporaryFile(mode="w", delete=False)
+            ft.write("""
+                #!/usr/bin/env bash
+                source $HOME/.bashrc
+                cd {}
+                history -s '{}'
+                {}
+            """.format(self.working_directory, self.main_command, self.main_command))
+
+            ft.close()
+
+            args = shlex.split("gnome-terminal -- bash --init-file {}".format(ft.name))
+            p = subprocess.Popen(args)
+            p.poll()
+
+        self.gracefull_terminate(_on_exit)
+
+    def gracefull_terminate(self, on_exit=None):
         self.status = "TERM"
-        os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+        self.send_signal(signal.SIGTERM)
 
         def _check_restart_wrapper():
             try:
@@ -103,13 +133,15 @@ class Slot(Thread):
             except subprocess.TimeoutExpired:
                 # kill process
                 self.status = "KILL"
-                os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
+                self.send_signal(signal.SIGKILL)
 
             except Exception as e:
                 print(e)
 
             self.loglines = []
-            self.status = "STOP"
+
+            if on_exit:
+                on_exit()
 
         Thread(target=_check_restart_wrapper).start()
 
@@ -129,15 +161,10 @@ class Slot(Thread):
 
     def safe_run(self):
 
-        first_time = True
-
         while True:
 
             if self.asked_to_quit:
                 break
-
-            if not first_time:
-                time.sleep(self.restart_wait)
 
             while not self.restart_on_exit:
                 time.sleep(0.3)
@@ -150,12 +177,14 @@ class Slot(Thread):
             # run main command
             self.run_main_command()
 
+            if self.restart_wait is not None:
+                time.sleep(self.restart_wait)
+
     def run_main_command(self):
         # split args
         args = shlex.split(self.main_command)
 
         # fork subprocess
-
         self.process = subprocess.Popen(args,
                             preexec_fn = os.setsid,
                             stdin = None,

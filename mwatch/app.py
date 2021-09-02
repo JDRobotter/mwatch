@@ -3,6 +3,8 @@ import math, time
 import curses
 from curses.textpad import rectangle
 
+import shlex, subprocess, select, signal
+
 from .slot import Slot
 
 class App:
@@ -81,6 +83,8 @@ class App:
             "",
             " ↑,↓ : change selection",
             "",
+            " x   : extract slot",
+            "",
             " r   : restart selected slot",
             " R   : restart all slots",
             " z   : zoom",
@@ -102,6 +106,10 @@ class App:
 
         elif key == curses.KEY_DOWN:
             self.selected_slot = min(self.selected_slot + 1, len(self.slots))
+
+        elif key == ord('x'):
+            slot = self.slots[self.selected_slot]
+            slot.extract()
 
         elif key == ord('r'):
             # restart selected slot
@@ -179,7 +187,8 @@ class App:
                     self.handle_key(self.s.getch())
                 except curses.error:
                     pass
-
+        except Exception as e:
+            raise
         except KeyboardInterrupt:
             pass
 
