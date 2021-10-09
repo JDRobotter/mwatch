@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mwatch"
-version = "0.9.2"
+version = "0.9.3"
 description = ""
 authors = ["JD <jeandamien.brossillon@gmail.com>"]
 
