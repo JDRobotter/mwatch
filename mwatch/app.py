@@ -34,6 +34,7 @@ class App:
                 working_directory = cfslot.get('workdir', None),
                 restart_wait = cfslot.get('wait', None),
                 watch = cfslot.get('watcher', None),
+                env = cfslot.get('env', None),
             ) 
             for cfslot in conf.get('slot', [])
         ]

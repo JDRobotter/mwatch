@@ -11,7 +11,8 @@ class Slot(Thread):
             main_command=None,
             working_directory=None,
             restart_wait=None,
-            watch=None):
+            watch=None,
+            env=None):
         Thread.__init__(self, daemon=True)
         self.main_command = main_command
         self.working_directory = working_directory
@@ -21,6 +22,12 @@ class Slot(Thread):
             self.watcher = FileWatcher(watch)
         else:
             self.watcher = None
+
+        if env is None:
+            self.environ = {}
+        else:
+            # stringify all keys and values
+            self.environ = { str(k):str(v) for k,v in env.items() }
 
         self.process = None
 
@@ -193,6 +200,7 @@ class Slot(Thread):
                             cwd = self.working_directory,
                             env = {
                                 **os.environ,
+                                **self.environ,
                                 'PYTHONUNBUFFERED': '1',
                             },
                         )

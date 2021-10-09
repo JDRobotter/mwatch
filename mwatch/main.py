@@ -20,6 +20,7 @@ Here is an example configuration:
         run = "nc -vlp 3920"
         workdir = "/tmp/"
         watch = "/tmp/source/"
+        env = { SOME_ENV = "stuff" }
 
     [[slot]]
         run = "sleep 3600"
